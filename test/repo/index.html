@@ -1,0 +1,115 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Userscript regression tests</title>
+<style>
+body {font:14px/1.5 system-ui; margin:32px; background:#fff; color:#1f2328}
+#sidebar {width:300px} .section {padding:20px 0;border-bottom:1px solid #d1d9e0}
+h2 {font-size:16px;margin:0 0 16px} .Counter {font-size:12px;background:#eff2f5;border-radius:20px;padding:2px 7px}
+ul {list-style:none;display:flex;gap:8px;padding:0;margin:0} img {width:32px;height:32px;border-radius:50%;background:#d8dee4}
+#results {white-space:pre-wrap;margin-top:24px} button {padding:8px}
+</style>
+<button id="run">Run regression tests</button>
+<div id="sidebar"></div><pre id="results">Ready</pre>
+<script>
+const sidebar = document.querySelector('#sidebar');
+const results = document.querySelector('#results');
+const wait = () => new Promise(resolve => setTimeout(resolve, 350));
+const realFetch = window.fetch;
+window.fetch = async input => String(input).includes('/test/repo/graphs/contributors-data')
+  ? new Response(JSON.stringify([
+      {total: 6, author: {login: 'cursoragent', avatar: 'https://avatars.githubusercontent.com/u/3', path: '/cursoragent'}},
+      {total: 87, author: {login: 'crowdin-bot', avatar: 'https://avatars.githubusercontent.com/u/2', path: '/crowdin-bot'}},
+      {total: 100, author: {login: 'human', avatar: 'https://avatars.githubusercontent.com/u/1', path: '/human'}},
+    ]), {status: 200, headers: {'Content-Type': 'application/json'}})
+  : realFetch(input);
+function person(login, avatar = '/u/1', type = 'user') {
+  return `<li><a href="/${login}" data-hovercard-type="${type}" data-hovercard-url="/users/${login}/hovercard"><img alt="@${login}" src="https://avatars.githubusercontent.com${avatar}?s=64"></a></li>`;
+}
+function mount(rows) {
+  sidebar.innerHTML = `<div class="section"><h2><a href="/test/repo/graphs/contributors">Contributors</a> <span class="Counter">142</span></h2><ul>${rows}</ul><a href="/test/repo/graphs/contributors">+ 128 contributors</a></div>`;
+}
+function assert(ok, name) {
+  if (!ok) throw new Error(name);
+  results.textContent += `PASS ${name}\n`;
+}
+const originalList = () => sidebar.querySelector('.section ul');
+const panel = () => document.querySelector('[data-gh-bots-panel]');
+const bots = person('dependabot[bot]', '/in/29110') + person('Copilot', '/in/1143301');
+mount(person('human') + bots + person('robot-lover'));
+document.querySelector('#run').onclick = async () => {
+  results.textContent = '';
+  try {
+    mount(person('human') + bots + person('robot-lover'));
+    await wait();
+    assert(panel().querySelectorAll('li').length === 2, 'Bot suffix and App-avatar detection');
+    assert(originalList().querySelectorAll('[data-gh-bots-original]').length === 2, 'Only bots hidden in original list');
+    assert(panel().querySelector('img').alt === '@dependabot[bot]', 'Native ordering preserved');
+    assert(panel().querySelector('ul').className === originalList().className, 'Native layout reused');
+    assert(sidebar.querySelector('.Counter').textContent === '142', 'Repository total left intact');
+    await wait();
+    assert(document.querySelectorAll('[data-gh-bots-panel]').length === 1, 'Observer does not duplicate panels');
+    originalList().insertAdjacentHTML('beforeend', person('custom-bot', '/u/2', 'bot'));
+    await wait();
+    assert(panel().querySelectorAll('li').length === 3, 'Late contributors detected');
+    mount(person('human') + person('robot-lover'));
+    await wait();
+    assert(!panel(), 'Panel removed when GitHub rerenders without bots');
+    mount(person('only[bot]', '/u/3'));
+    await wait();
+    assert(panel().querySelectorAll('li').length === 1, 'All-bot sidebar retains bot avatar');
+    document.dispatchEvent(new Event('turbo:before-cache'));
+    assert(!panel() && !originalList().querySelector('[data-gh-bots-original]'), 'Turbo cache restores original DOM');
+    document.dispatchEvent(new Event('turbo:load'));
+    await wait();
+    assert(!!panel(), 'Turbo return rebuilds panel');
+    history.pushState({}, '', '/test/repo/issues');
+    document.dispatchEvent(new Event('soft-nav:render'));
+    await wait();
+    assert(!panel(), 'Non-home navigation removes panel');
+    history.pushState({}, '', '/test/repo/');
+    window.dispatchEvent(new Event('popstate'));
+    await wait();
+    assert(!!panel(), 'Back navigation rebuilds panel');
+    mount(person('codex') + person('crowdin-bot') + person('dependabot') + person('robot-lover') + person('bottle'));
+    await wait();
+    assert(panel().querySelectorAll('li').length === 3, 'Agent list and bot suffix match without matching internal bot text');
+    history.pushState({}, '', '/test/repo/graphs/contributors?all=1');
+    const card = (name, linked = true) => `<li><h2>${linked ? `<a href="/${name}">${name}</a>` : name}<span class="sr-only">'s Commits</span></h2><button class="chart-action">Chart options</button></li>`;
+    sidebar.innerHTML = `<ul class="Index-module__chartList__test">${card('human')}${card('crowdin-bot')}${card('Codex', false)}<li id="pending"></li></ul>`;
+    let clicks = 0;
+    const originalButton = sidebar.querySelector('.chart-action');
+    originalButton.onclick = () => clicks++;
+    document.dispatchEvent(new Event('soft-nav:render'));
+    await wait();
+    const controls = () => document.querySelector('.gh-bots-controls');
+    assert(controls().querySelectorAll('button')[1].textContent === 'Agents or bots (2)', 'Graphs all=1 loads the complete agent list');
+    assert(sidebar.querySelectorAll('[data-gh-bots-filtered]').length === 2, 'Graphs default excludes agents');
+    controls().querySelectorAll('button')[1].click();
+    assert(sidebar.querySelector('ul[class*="chartList"]').hasAttribute('data-gh-bots-list-hidden'), 'Agents group hides the virtualized native list as one unit');
+    assert(document.querySelectorAll('[data-gh-bots-agent-list] li').length === 2, 'Agents group renders stable API-backed cards');
+    assert([...document.querySelectorAll('[data-gh-bots-agent-list] strong')].some(node => node.textContent === 'cursoragent'), 'Maintained agent login is included');
+    controls().querySelector('button').click();
+    originalButton.click();
+    assert(clicks === 1 && originalButton.isConnected, 'Original chart nodes and event handlers preserved');
+    document.querySelector('#pending').outerHTML = card('release-bot');
+    await wait();
+    assert(sidebar.querySelectorAll('[data-gh-bots-filtered]').length === 3, 'Lazy native graph cards classified without changing API counts');
+    history.pushState({}, '', '/test/repo/graphs/contributors');
+    document.dispatchEvent(new Event('soft-nav:render'));
+    await wait();
+    assert(document.querySelectorAll('.gh-bots-controls').length === 1, 'Default graphs URL also works without duplicate controls');
+    document.dispatchEvent(new Event('turbo:before-cache'));
+    assert(!controls() && !sidebar.querySelector('[data-gh-bots-filtered]'), 'Graph cache cleanup restores every card');
+    document.dispatchEvent(new Event('turbo:load'));
+    await wait();
+    assert(!!controls(), 'Graph navigation return restores grouping');
+    history.pushState({}, '', '/test/repo/');
+    mount(person('human') + bots + person('robot-lover'));
+    await wait();
+    results.textContent += 'ALL TESTS PASSED';
+  } catch (error) {
+    results.textContent += 'FAIL ' + error.message;
+  }
+};
+</script>
+<script src="/github-agents-or-bots.user.js"></script>
