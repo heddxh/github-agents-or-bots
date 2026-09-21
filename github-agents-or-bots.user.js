@@ -9,7 +9,7 @@
 // @updateURL    https://raw.githubusercontent.com/luoling8192/github-agents-or-bots/main/github-agents-or-bots.user.js
 // @match        https://github.com/*
 // @run-at       document-idle
-// @grant        none
+// @grant        GM_getValue
 // @noframes
 // @license      MIT
 // ==/UserScript==
@@ -23,9 +23,9 @@
   const agentLogins = new Set(['copilot', 'codex', 'openai-codex', 'claude', 'cursoragent']);
   // Exact, unlinked Git author names; these are labels, not verified identities.
   const agentAuthorNames = new Set(['codex', 'openai codex', 'claude', 'claude code']);
-  const additionalBotLogins = new Set([]);
+  const additionalBotLogins = new Set(GM_getValue("additionalBotLogins", []));
   // Overrides every automatic rule. Add false positives here, in lowercase.
-  const humanLogins = new Set([]);
+  const humanLogins = new Set(GM_getValue("humanLogins", []));
   const states = new Map();
   const graphStates = new Map();
   let timer;
