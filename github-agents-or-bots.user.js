@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         GitHub Agents or bots panel
 // @namespace    github-sidebar-agents-or-bots
-// @version      1.2.0
+// @version      1.2.0.1
 // @description  Separate agents and bots on repository homepages and contributor graphs.
 // @homepageURL  https://github.com/luoling8192/github-agents-or-bots
 // @supportURL   https://github.com/luoling8192/github-agents-or-bots/issues
-// @downloadURL  https://raw.githubusercontent.com/luoling8192/github-agents-or-bots/main/github-agents-or-bots.user.js
-// @updateURL    https://raw.githubusercontent.com/luoling8192/github-agents-or-bots/main/github-agents-or-bots.user.js
+// @downloadURL  https://raw.githubusercontent.com/heddxh/github-agents-or-bots/main/github-agents-or-bots.user.js
+// @updateURL    https://raw.githubusercontent.com/heddxh/github-agents-or-bots/main/github-agents-or-bots.user.js
 // @match        https://github.com/*
 // @run-at       document-idle
 // @grant        GM_getValue
